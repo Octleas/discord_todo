@@ -1,49 +1,81 @@
-# VibeCoding テンプレートリポジトリ
+# Discord Task Management Bot
 
-## 概要
-このリポジトリは、VibeCodingプロジェクトのテンプレートとして使用されます。以下のルールに従って開発を進めてください。
+サークル運営を支援するDiscord Botです。タスク管理とメール通知機能を提供します。
 
-## 使い方
+## 機能
 
-「use this template」ボタンを使用し、自身のリポジトリを作成してください。
-以後の作業はすべて自身のリポジトリで実施してください。
+- タスク管理
+  - タスクの作成、編集、削除
+  - 締切日管理
+  - 自動リマインド
+- Outlookメール連携
+  - メール通知
+  - OAuth2認証
 
-## 開発ルール
-1. **仕様書作成フェーズ**
-   - プロジェクト開始時に、`prd.md` をGPTsを使ってつくったものに置き換えてください
-   - prdをもとに、画面設計、api設計、DB設計、技術選定を行います。
-     - それぞれ、Agentに「api設計仕様書を `api.md` に記述してください」など指示すればベースが完成します。
-   - UIデザインは上記仕様書を使用し、以下のツールなどを活用して作ってください。（以下以外でももちろんOK）
-     - v0
-     - Lovable
-     - Create
-     - Stitch
-     - Claude / Gemini / ChatGPT　（汎用系）
-   - 完成したUIラフは Html to design なども適宜つかって、Figmaにいれておくと便利です
-     - 実装時にFigma MCPを使うととっても速いです。
+## 技術スタック
 
-2. **開発フロー**
-   - `vibecoding-plan.md`をAgentに作成させてください。
-   - 計画書と仕様書に基づいてコードを実装します。計画書のステップごとに進めると良いです。
-   - 実装後、コードレビューを行い、必要に応じて修正を加えます。
+- Python 3.11+
+- Discord.py
+- FastAPI
+- SQLAlchemy
+- PostgreSQL (Supabase)
+- Poetry
 
-3. **Git管理**
-   - まめに変更を記録しましょう。Agentに「pushしておいて」と依頼するだけでもOKです
-   - コミットメッセージもAgentに依頼して作成してもらいましょう
-   - 必要に応じてブランチを作成し、プルリクエストを通じて変更をマージしてください。
+## 開発環境のセットアップ
 
-4. **最後に**
-   - Vibe Codingが終わったら学びカリキュラムを生成してください。
-   - 学びカリキュラムに沿って学習を進めてみましょう！
+1. 必要なツールのインストール
+```bash
+# Poetryのインストール
+brew install poetry
 
-## ファイル構成
-- `docs/details/api.md` : API設計書
-- `docs/details/database.md` : DB設計書
-- `docs/details/technology-selection.md` : 技術選定書
-- `docs/prd/prd.md` : PRD仕様書
-- `docs/vibecoding-plan/vibecoding-plan.md` : VibeCoding計画書
-- `learning-path/learning-path.md` : 学びカリキュラム
-- `src/` : ソースコード (実装部分)
+# 依存関係のインストール
+poetry install
+```
 
-## 注意事項
-- 不明点があれば、運営やメンターに相談してください。
+2. 環境変数の設定
+```bash
+# 環境変数テンプレートのコピー
+cp config.example.env .env
+
+# .envファイルを編集して必要な値を設定
+```
+
+3. データベースのセットアップ
+```bash
+# マイグレーションの実行
+poetry run alembic upgrade head
+```
+
+4. 開発サーバーの起動
+```bash
+# Discord Botの起動
+poetry run python src/discord_todo/bot/main.py
+
+# FastAPI サーバーの起動（別ターミナルで）
+poetry run uvicorn src.discord_todo.api.main:app --reload
+```
+
+## テスト
+
+```bash
+# テストの実行
+poetry run pytest
+
+# コードフォーマット
+poetry run ruff format .
+
+# リンター
+poetry run ruff check .
+```
+
+## デプロイ
+
+- Bot: Fly.io
+- API: Vercel
+- Database: Supabase
+
+詳細なデプロイ手順は[デプロイガイド](docs/deployment.md)を参照してください。
+
+## ライセンス
+
+MIT License
