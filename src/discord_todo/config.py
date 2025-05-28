@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     DISCORD_TOKEN: str | None = None
     DISCORD_CLIENT_ID: str | None = None
     DISCORD_CLIENT_SECRET: str | None = None
+    DISCORD_DEVELOPMENT_GUILD_ID: int | None = None
 
     # データベース設定
     DATABASE_URL: str

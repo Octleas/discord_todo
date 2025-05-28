@@ -1,7 +1,8 @@
 from datetime import datetime
 from enum import Enum
+from typing import List
 
-from sqlalchemy import String, Text
+from sqlalchemy import String, Text, JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base
@@ -34,4 +35,19 @@ class Task(Base):
     importance: Mapped[ImportanceLevel] = mapped_column(default=ImportanceLevel.MEDIUM)
     status: Mapped[TaskStatus] = mapped_column(default=TaskStatus.PENDING, index=True)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
-    pdf_url: Mapped[str | None] = mapped_column(String(1024), nullable=True) 
+    pdf_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    
+    # 通知設定（分単位で保存）
+    notification_times: Mapped[List[int]] = mapped_column(
+        JSON, nullable=False, default=list
+    )
+    # 通知済みの時間（分単位で保存）
+    notified_times: Mapped[List[int]] = mapped_column(
+        JSON, nullable=False, default=list
+    )
+
+    @property
+    def short_id(self) -> str:
+        """5文字のショートID"""
+        # IDを36進数に変換して5文字に制限
+        return hex(self.id)[2:].zfill(5)[-5:] 
