@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import urllib.parse
 
 import discord
 from discord import app_commands
@@ -7,6 +8,7 @@ from sqlalchemy import select
 
 from ...db.session import AsyncSessionLocal
 from ...models.mail import MailConnection
+from ...config import settings
 
 
 class MailCog(commands.Cog):
@@ -14,6 +16,31 @@ class MailCog(commands.Cog):
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
+
+    @app_commands.command(name="mail-connect", description="Outlook連携の認証URLを発行します")
+    async def mail_connect(self, interaction: discord.Interaction) -> None:
+        """Outlook認証用のURLを案内するコマンド"""
+        client_id = settings.MICROSOFT_CLIENT_ID
+        tenant_id = settings.MICROSOFT_TENANT_ID
+        redirect_uri = "http://localhost:8000/api/mail/callback"
+        scope = "offline_access Mail.Read User.Read"
+        response_type = "code"
+        prompt = "consent"
+
+        params = {
+            "client_id": client_id,
+            "response_type": response_type,
+            "redirect_uri": redirect_uri,
+            "response_mode": "query",
+            "scope": scope,
+            "prompt": prompt,
+        }
+        url = f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/authorize?{urllib.parse.urlencode(params)}"
+
+        await interaction.response.send_message(
+            f"Outlook連携のため、以下のURLから認証を行ってください:\n{url}",
+            ephemeral=True
+        )
 
     @app_commands.command(name="mail-status", description="メール連携の状態を確認")
     async def mail_status(self, interaction: discord.Interaction) -> None:

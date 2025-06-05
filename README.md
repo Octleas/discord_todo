@@ -51,8 +51,13 @@ poetry run alembic upgrade head
 # Discord Botの起動
 poetry run python src/discord_todo/bot/main.py
 
+poetry run python -m discord_todo
+
+
 # FastAPI サーバーの起動（別ターミナルで）
 poetry run uvicorn src.discord_todo.api.main:app --reload
+
+poetry run uvicorn src.discord_todo.main:app --reload
 ```
 
 ## テスト
