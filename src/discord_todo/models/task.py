@@ -48,6 +48,6 @@ class Task(Base):
 
     @property
     def short_id(self) -> str:
-        """5文字のショートID"""
-        # IDを36進数に変換して5文字に制限
-        return hex(self.id)[2:].zfill(5)[-5:] 
+        """3文字のショートID"""
+        # IDを36進数に変換して3文字に制限
+        return hex(self.id)[2:].zfill(3)[-3:] 

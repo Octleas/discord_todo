@@ -20,11 +20,13 @@ class NotificationManager:
     def cog_unload(self):
         self.check_notifications.cancel()
 
-    @tasks.loop(minutes=1)
+    @tasks.loop(hours=1)  # 1時間ごとにチェック
     async def check_notifications(self):
         try:
             print("通知チェック開始")  # デバッグ用
             now = datetime.now()
+            # 現在時刻を時間単位に丸める（分以下を0にする）
+            now = now.replace(minute=0, second=0, microsecond=0)
 
             async with AsyncSessionLocal() as session:
                 # 未完了のタスクを取得
@@ -38,10 +40,12 @@ class NotificationManager:
                     print(f"タスク: {task.title}, 通知タイミング: {task.notification_times}, 通知済: {task.notified_times}")  # デバッグ用
                     for minutes in task.notification_times:
                         notify_at = task.deadline - timedelta(minutes=minutes)
+                        # 通知時刻を時間単位に丸める
+                        notify_at = notify_at.replace(minute=0, second=0, microsecond=0)
                         print(f"通知予定時刻: {notify_at}, 現在時刻: {now}")  # デバッグ用
-                        # 通知時刻が現在時刻の±30秒以内で、まだ通知していない場合
-                        if (abs((notify_at - now).total_seconds()) <= 30 and
-                                minutes not in task.notified_times):
+
+                        # 通知時刻が現在時刻と一致し、まだ通知していない場合
+                        if notify_at == now and minutes not in task.notified_times:
                             print("通知送信処理に入る")  # デバッグ用
                             # 通知を送信
                             channel = self.bot.get_channel(int(task.channel_id))
@@ -50,8 +54,6 @@ class NotificationManager:
                                     f"{minutes // 1440}日"
                                     if minutes >= 1440
                                     else f"{minutes // 60}時間"
-                                    if minutes >= 60
-                                    else f"{minutes}分"
                                 )
                                 
                                 embed = discord.Embed(

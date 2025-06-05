@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy import MetaData
@@ -17,6 +17,11 @@ convention = {
 metadata = MetaData(naming_convention=convention)
 
 
+def get_jst_now() -> datetime:
+    """現在のJST時刻を取得"""
+    return datetime.utcnow() + timedelta(hours=9)
+
+
 class Base(DeclarativeBase):
     """全モデルの基底クラス"""
 
@@ -28,9 +33,9 @@ class Base(DeclarativeBase):
         return cls.__name__.lower()
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=get_jst_now)
     updated_at: Mapped[datetime] = mapped_column(
-        default=datetime.utcnow, onupdate=datetime.utcnow
+        default=get_jst_now, onupdate=get_jst_now
     )
 
     def dict(self) -> dict[str, Any]:

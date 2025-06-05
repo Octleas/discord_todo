@@ -135,19 +135,45 @@ class TaskCog(commands.Cog):
         embeds = []
         for task in tasks:
             embed = discord.Embed(
-                title=task.title,
+                title=f"({task.short_id}) {task.title}",
                 description=task.summary if task.summary else "詳細なし",
                 color=discord.Color.blue(),
             )
             assigned_member = interaction.guild.get_member(int(task.assigned_to))
+            
+            # 担当者・重要度を横並び
             embed.add_field(
                 name="担当者",
-                value=assigned_member.mention if assigned_member else "不明",
+                value=assigned_member.mention if assigned_member else '不明',
                 inline=True,
             )
-            embed.add_field(name="締め切り", value=task.deadline.strftime("%Y-%m-%d %H:%M"), inline=True)
-            embed.add_field(name="重要度", value=task.importance.value, inline=True)
-            embed.add_field(name="ステータス", value=task.status.value, inline=True)
+            embed.add_field(
+                name="重要度",
+                value=task.importance.value,
+                inline=True,
+            )
+            # 空白フィールドで改行を強制（2列で折り返し）
+            embed.add_field(name="\u200b", value="\u200b", inline=False)
+
+            # 作成日・締切日を横並び
+            embed.add_field(
+                name="作成日",
+                value=task.created_at.strftime('%Y-%m-%d %H:%M'),
+                inline=True,
+            )
+            embed.add_field(
+                name="締切日",
+                value=task.deadline.strftime('%Y-%m-%d %H:%M'),
+                inline=True,
+            )
+            embed.add_field(name="\u200b", value="\u200b", inline=False)
+
+            # ステータスは1行で
+            embed.add_field(
+                name="ステータス",
+                value=task.status.value,
+                inline=False,
+            )
             embeds.append(embed)
 
         await interaction.response.send_message(embeds=embeds[:10])
@@ -195,6 +221,57 @@ class TaskCog(commands.Cog):
         )
 
         await interaction.response.send_message(embed=embed)
+
+    @app_commands.command(name="task-delete", description="タスクを削除します")
+    @app_commands.describe(task_id="削除するタスクのID")
+    async def delete_task(
+        self,
+        interaction: discord.Interaction,
+        task_id: int,
+    ) -> None:
+        """タスクを削除するコマンド"""
+        async with AsyncSessionLocal() as session:
+            # タスクの存在確認
+            result = await session.execute(
+                select(Task).where(
+                    Task.id == task_id,
+                    Task.guild_id == str(interaction.guild_id),
+                )
+            )
+            task = result.scalar_one_or_none()
+
+            if not task:
+                await interaction.response.send_message(
+                    "指定されたタスクが見つかりませんでした。", ephemeral=True
+                )
+                return
+
+            # 権限チェック（タスクの担当者またはサーバー管理者のみ削除可能）
+            if not (
+                str(interaction.user.id) == task.assigned_to
+                or interaction.user.guild_permissions.administrator
+            ):
+                await interaction.response.send_message(
+                    "このタスクを削除する権限がありません。タスクの担当者またはサーバー管理者のみが削除できます。",
+                    ephemeral=True,
+                )
+                return
+
+            # タスクの削除
+            await session.delete(task)
+            await session.commit()
+
+            embed = discord.Embed(
+                title="タスク削除",
+                description=f"タスク「{task.title}」を削除しました。",
+                color=discord.Color.red(),
+            )
+            embed.add_field(name="削除者", value=interaction.user.mention, inline=True)
+            embed.add_field(
+                name="削除日時", value=datetime.utcnow().strftime("%Y-%m-%d %H:%M"), inline=True
+            )
+
+            await interaction.response.send_message(embed=embed)
 
 
 async def setup(bot: commands.Bot) -> None:
