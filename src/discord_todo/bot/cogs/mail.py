@@ -26,7 +26,9 @@ class MailCog(commands.Cog):
         scope = "offline_access Mail.Read User.Read"
         response_type = "code"
         prompt = "consent"
-
+        guild_id = str(interaction.guild_id)
+        user_id = str(interaction.user.id)
+        state = f"{guild_id}:{user_id}"
         params = {
             "client_id": client_id,
             "response_type": response_type,
@@ -34,6 +36,7 @@ class MailCog(commands.Cog):
             "response_mode": "query",
             "scope": scope,
             "prompt": prompt,
+            "state": state,
         }
         url = f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/authorize?{urllib.parse.urlencode(params)}"
 

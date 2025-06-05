@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, HTTPException, Depends, Query
+from fastapi import APIRouter, Request, HTTPException, Depends, Query, Body
 import httpx
 import os
 from src.discord_todo.config import settings
@@ -6,17 +6,26 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from src.discord_todo.db.session import get_db
 from src.discord_todo.models.mail import MailConnection
+from pydantic import BaseModel
+from datetime import datetime, timezone, timedelta
+
+class MailCallbackRequest(BaseModel):
+    code: str
+    guild_id: str
+    user_id: str
 
 router = APIRouter()
 
-@router.get("/api/mail/callback")
-async def mail_callback(request: Request):
-    code = request.query_params.get("code")
-    if not code:
-        raise HTTPException(status_code=400, detail="認証コードがありません")
-
-    # .envから読み込んだクライアントシークレットをprint
-    print(f"[DEBUG] MICROSOFT_CLIENT_SECRET: {repr(settings.MICROSOFT_CLIENT_SECRET)}")
+@router.post("/api/mail/callback")
+async def mail_callback(
+    body: MailCallbackRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    code = body.code
+    guild_id = body.guild_id
+    user_id = body.user_id
+    if not code or not guild_id or not user_id:
+        raise HTTPException(status_code=400, detail="code, guild_id, user_idは必須です")
 
     token_url = f"https://login.microsoftonline.com/{settings.MICROSOFT_TENANT_ID}/oauth2/v2.0/token"
     data = {
@@ -27,19 +36,72 @@ async def mail_callback(request: Request):
         "redirect_uri": "http://localhost:8000/api/mail/callback",
         "scope": "offline_access Mail.Read User.Read",
     }
-    print(f"[DEBUG] Token request URL: {token_url}")
-    print(f"[DEBUG] Token request data: {data}")
-
     async with httpx.AsyncClient() as client:
         response = await client.post(token_url, data=data)
-        print(f"[DEBUG] Token response status: {response.status_code}")
-        print(f"[DEBUG] Token response body: {response.text}")
         if response.status_code != 200:
             raise HTTPException(status_code=500, detail=f"トークン取得失敗: {response.text}")
         token_data = response.json()
-        print("Microsoftトークン取得成功:", token_data)
-        # 今後はここでDB保存やユーザー紐付けを実装
-    return {"message": "認証が完了しました。Discordに戻ってください。"}
+        access_token = token_data.get("access_token")
+        refresh_token = token_data.get("refresh_token")
+        expires_in = token_data.get("expires_in")
+        if not access_token or not refresh_token or not expires_in:
+            raise HTTPException(status_code=500, detail="トークン情報の取得に失敗しました")
+        # 有効期限を計算
+        token_expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
+        # 有効期限をaware → naive 変換
+        if token_expires_at.tzinfo is not None:
+            token_expires_at = token_expires_at.replace(tzinfo=None)
+        # メールアドレス取得
+        headers = {"Authorization": f"Bearer {access_token}"}
+        me_resp = await client.get("https://graph.microsoft.com/v1.0/me", headers=headers)
+        if me_resp.status_code != 200:
+            raise HTTPException(status_code=500, detail=f"メールアドレス取得失敗: {me_resp.text}")
+        me_data = me_resp.json()
+        email = me_data.get("mail") or me_data.get("userPrincipalName")
+        if not email:
+            raise HTTPException(status_code=500, detail="メールアドレスが取得できませんでした")
+    # DB保存（既存があれば更新）
+    try:
+        result = await db.execute(
+            select(MailConnection).where(
+                MailConnection.guild_id == guild_id,
+                MailConnection.user_id == user_id,
+            )
+        )
+        connection = result.scalar_one_or_none()
+        if connection:
+            connection.email = email
+            connection.access_token = access_token
+            connection.refresh_token = refresh_token
+            connection.token_expires_at = token_expires_at
+        else:
+            connection = MailConnection(
+                guild_id=guild_id,
+                user_id=user_id,
+                email=email,
+                access_token=access_token,
+                refresh_token=refresh_token,
+                token_expires_at=token_expires_at,
+            )
+            db.add(connection)
+        await db.commit()
+    except Exception as e:
+        print(f"[ERROR] mailconnection保存時に例外発生: {e}")
+        raise HTTPException(status_code=500, detail=f"mailconnection保存時に例外発生: {e}")
+    return {"message": "認証が完了し、連携情報を保存しました。Discordに戻ってください。"}
+
+@router.get("/api/mail/callback")
+async def mail_callback_get(request: Request, db: AsyncSession = Depends(get_db)):
+    code = request.query_params.get("code")
+    state = request.query_params.get("state")
+    if not code or not state:
+        raise HTTPException(status_code=400, detail="認証コードまたはstateがありません")
+    try:
+        guild_id, user_id = state.split(":")
+    except Exception:
+        raise HTTPException(status_code=400, detail="stateの形式が不正です")
+    body = MailCallbackRequest(code=code, guild_id=guild_id, user_id=user_id)
+    return await mail_callback(body, db)
 
 @router.get("/api/mail/list")
 async def get_mail_list(
