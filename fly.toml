@@ -1,0 +1,23 @@
+app = "discord-todo-bot"
+primary_region = "nrt"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  ENVIRONMENT = "production"
+  PYTHONPATH = "/app"
+
+[deploy]
+  strategy = "immediate"
+
+[processes]
+  bot = "python -m discord_todo.bot"
+
+[checks]
+  [checks.bot]
+    grace_period = "30s"
+    interval = "15s"
+    method = "ps"
+    timeout = "2s"
+    type = "process" 
