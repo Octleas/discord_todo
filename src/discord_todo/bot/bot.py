@@ -26,15 +26,15 @@ class TodoBot(commands.Bot):
     async def setup_hook(self) -> None:
         """Botの初期設定"""
         print("setup_hook呼び出し")  # デバッグ用
-        # コグの読み込み
+        print("task cog読み込み開始")
         await self.load_extension("discord_todo.bot.cogs.task")
+        print("mail cog読み込み開始")
         await self.load_extension("discord_todo.bot.cogs.mail")
-
-        # 通知マネージャーを初期化（1分ごとの通知チェックを開始）
+        print("通知マネージャ初期化")
         self.notification_manager = NotificationManager(self)
-
-        # コマンドの同期（グローバル登録）
+        print("コマンド同期開始")
         await self.tree.sync()
+        print("setup_hook完了")
 
     async def on_ready(self) -> None:
         """Bot起動時の処理"""
