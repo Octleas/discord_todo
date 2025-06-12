@@ -22,7 +22,7 @@ class TaskCog(commands.Cog):
         title="タスクのタイトル",
         assigned_to="担当者（メンション）",
         deadline="締め切り（YYYY-MM-DD HH:MM形式）",
-        notifications="通知タイミング（例: 1d 2m 3h）スペース区切りで複数指定可能",
+        notifications="通知タイミング（例: 1h 2h）",
         importance="重要度",
         summary="タスクの詳細説明",
     )
