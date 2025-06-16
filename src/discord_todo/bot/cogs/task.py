@@ -275,9 +275,5 @@ class TaskCog(commands.Cog):
 
 
 async def setup(bot: commands.Bot) -> None:
-    """コグのセットアップ（ギルド限定コマンド同期）"""
-    await bot.add_cog(TaskCog(bot))
-    guild_id = settings.DISCORD_DEVELOPMENT_GUILD_ID
-    if guild_id:
-        guild = discord.Object(id=guild_id)
-        await bot.tree.sync(guild=guild) 
+    """コグのセットアップ"""
+    await bot.add_cog(TaskCog(bot)) 

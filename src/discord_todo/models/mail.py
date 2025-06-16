@@ -35,7 +35,7 @@ class MailNotification(Base):
     subject: Mapped[str] = mapped_column(String(255), nullable=False)
     sender: Mapped[str] = mapped_column(String(255), nullable=False)
     received_at: Mapped[datetime] = mapped_column(nullable=False, index=True)
-    notified_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    notified_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now())
     discord_message_id: Mapped[str] = mapped_column(String(255), nullable=False)
 
     # リレーションシップ

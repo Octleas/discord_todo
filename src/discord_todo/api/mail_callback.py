@@ -17,7 +17,7 @@ class MailCallbackRequest(BaseModel):
 
 router = APIRouter()
 
-@router.post("/api/mail/callback")
+@router.post("/mail/callback")
 async def mail_callback(
     body: MailCallbackRequest,
     db: AsyncSession = Depends(get_db),
@@ -93,7 +93,7 @@ async def mail_callback(
         raise HTTPException(status_code=500, detail=f"mailconnection保存時に例外発生: {e}")
     return {"message": "認証が完了し、連携情報を保存しました。Discordに戻ってください。"}
 
-@router.get("/api/mail/callback")
+@router.get("/mail/callback")
 async def mail_callback_get(request: Request, db: AsyncSession = Depends(get_db)):
     code = request.query_params.get("code")
     state = request.query_params.get("state")
@@ -154,7 +154,7 @@ async def ensure_valid_access_token(connection, db):
         print("[DEBUG] トークンはまだ有効です。リフレッシュ不要")
     return connection.access_token
 
-@router.get("/api/mail/list")
+@router.get("/mail/list")
 async def get_mail_list(
     guild_id: str = Query(..., description="DiscordのギルドID"),
     user_id: str = Query(..., description="DiscordのユーザーID"),

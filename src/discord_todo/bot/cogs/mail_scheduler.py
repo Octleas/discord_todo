@@ -1,12 +1,12 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import discord
 from discord.ext import commands
 from discord import app_commands
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from ...db.session import AsyncSessionLocal
-from ...models.mail import MailConnection
+from ...models.mail import MailConnection, MailNotification
 from ...config import settings
 import httpx
 import pytz
@@ -28,6 +28,13 @@ class MailSchedulerCog(commands.Cog):
             self.fetch_all_mails,
             IntervalTrigger(minutes=30),
             name="fetch_all_mails",
+            replace_existing=True,
+        )
+        # 24時間ごとに古い通知履歴をクリーンアップ
+        self.scheduler.add_job(
+            self.cleanup_old_notifications,
+            IntervalTrigger(hours=24),
+            name="cleanup_old_notifications",
             replace_existing=True,
         )
         self.scheduler.start()
@@ -86,7 +93,8 @@ class MailSchedulerCog(commands.Cog):
                         summary += "\n**取得したメール:**\n"
                         for i, mail in enumerate(mails[:3], 1):  # 最初の3件のみ表示
                             subject = mail.get("subject", "件名なし")[:50]
-                            sender = mail.get("from", {}).get("emailAddress", {}).get("address", "不明")
+                            sender = mail.get("from", {}).get("emailAddress", {})
+                            sender = sender.get("address", "不明")
                             summary += f"`{i}.` {subject}\n    📧 From: {sender}\n"
                         if len(mails) > 3:
                             summary += f"...他 {len(mails) - 3} 件"
@@ -168,15 +176,33 @@ class MailSchedulerCog(commands.Cog):
                 print(f"[DEBUG] 取得したメール数: {len(mails)}")
                 
                 if not skip_notification and mails:
-                    # 取得したメールをDiscordに通知
-                    guild = self.bot.get_guild(int(connection.guild_id))
-                    if not guild:
-                        print(f"[ERROR] Guild not found: {connection.guild_id}")
-                        return mails
+                    # 既に通知済みのメールをチェック
+                    notified_message_ids = await self.get_notified_message_ids(connection.id, session)
+                    
+                    # 未通知のメールのみ通知
+                    new_mails = []
+                    for mail in mails:
+                        message_id = mail.get("id")
+                        if message_id and message_id not in notified_message_ids:
+                            new_mails.append(mail)
+                    
+                    print(f"[DEBUG] 新着メール数: {len(new_mails)}")
+                    
+                    if new_mails:
+                        # 取得したメールをDiscordに通知
+                        guild = self.bot.get_guild(int(connection.guild_id))
+                        if not guild:
+                            print(f"[ERROR] Guild not found: {connection.guild_id}")
+                            return mails
 
-                    # 最新の3件のみ通知
-                    for mail in mails[:3]:
-                        await self.notify_mail(guild, connection, mail)
+                        # 最新の3件のみ通知
+                        for mail in new_mails[:3]:
+                            discord_message_id = await self.notify_mail(guild, connection, mail)
+                            if discord_message_id:
+                                # 通知履歴をデータベースに保存
+                                await self.save_notification_history(
+                                    connection.id, mail, discord_message_id, session
+                                )
 
             # 最終チェック時刻を更新
             connection.last_checked_at = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -188,14 +214,65 @@ class MailSchedulerCog(commands.Cog):
             print(f"[ERROR] メール取得処理でエラー発生: {e}")
             raise
 
-    async def notify_mail(self, guild: discord.Guild, connection: MailConnection, mail: dict):
+    async def get_notified_message_ids(self, connection_id: int, session) -> set:
+        """既に通知済みのメッセージIDを取得"""
+        try:
+            result = await session.execute(
+                select(MailNotification.message_id).where(
+                    MailNotification.connection_id == connection_id
+                )
+            )
+            message_ids = result.scalars().all()
+            return set(message_ids)
+        except Exception as e:
+            print(f"[ERROR] 通知履歴取得エラー: {e}")
+            return set()
+
+    async def save_notification_history(
+        self, 
+        connection_id: int, 
+        mail: dict, 
+        discord_message_id: str, 
+        session
+    ):
+        """通知履歴をデータベースに保存"""
+        try:
+            message_id = mail.get("id")
+            subject = mail.get("subject", "件名なし")
+            sender_info = mail.get("from", {}).get("emailAddress", {})
+            sender = sender_info.get("address", "不明な送信者")
+            received_at_str = mail.get("receivedDateTime")
+            
+            # 受信日時の変換
+            try:
+                received_at = datetime.fromisoformat(received_at_str.replace("Z", "+00:00"))
+                received_at = received_at.replace(tzinfo=None)  # naive datetimeに変換
+            except:
+                received_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            
+            notification = MailNotification(
+                connection_id=connection_id,
+                message_id=message_id,
+                subject=subject,
+                sender=sender,
+                received_at=received_at,
+                discord_message_id=discord_message_id
+            )
+            
+            session.add(notification)
+            print(f"[DEBUG] 通知履歴を保存: {subject}")
+            
+        except Exception as e:
+            print(f"[ERROR] 通知履歴保存エラー: {e}")
+
+    async def notify_mail(self, guild: discord.Guild, connection: MailConnection, mail: dict) -> str:
         """メールをDiscordに通知"""
         try:
             # システムチャンネルに通知
             channel = guild.system_channel
             if not channel:
                 print(f"[ERROR] System channel not found in guild: {guild.id}")
-                return
+                return None
 
             # Embedの作成
             subject = mail.get("subject", "件名なし")
@@ -219,13 +296,38 @@ class MailSchedulerCog(commands.Cog):
 
             print(f"[DEBUG] 通知を送信: {subject}")
             # 通知を送信
-            await channel.send(
+            message = await channel.send(
                 f"<@{connection.user_id}>さん宛のメールが届きました",
                 embed=embed
             )
+            
+            return str(message.id)
 
         except Exception as e:
             print(f"[ERROR] Discord通知でエラー発生: {e}")
+            return None
+
+    async def cleanup_old_notifications(self):
+        """30日より古い通知履歴を削除"""
+        print("[DEBUG] 古い通知履歴のクリーンアップを開始")
+        try:
+            async with AsyncSessionLocal() as session:
+                # 30日前の日時を計算
+                cutoff_date = datetime.now(timezone.utc) - timedelta(days=30)
+                cutoff_date = cutoff_date.replace(tzinfo=None)
+                
+                # 古い通知履歴を削除
+                delete_query = delete(MailNotification).where(
+                    MailNotification.notified_at < cutoff_date
+                )
+                result = await session.execute(delete_query)
+                deleted_count = result.rowcount
+                
+                await session.commit()
+                print(f"[DEBUG] {deleted_count}件の古い通知履歴を削除しました")
+                
+        except Exception as e:
+            print(f"[ERROR] 通知履歴クリーンアップでエラー発生: {e}")
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(MailSchedulerCog(bot)) 
