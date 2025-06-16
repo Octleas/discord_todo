@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  # PostgreSQLデータベース（ローカル開発用）
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: discord_todo
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Discord Todo Bot
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql://postgres:password@db:5432/discord_todo
+      - ENVIRONMENT=development
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./src:/app/src
+      - ./alembic:/app/alembic
+      - ./alembic.ini:/app/alembic.ini
+    command: ./start.sh
+
+volumes:
+  postgres_data: 

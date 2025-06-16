@@ -1,14 +1,14 @@
-# Git
+# Git関連
 .git
 .gitignore
+README.md
 
-# Python
+# Python関連
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
-env/
 build/
 develop-eggs/
 dist/
@@ -20,26 +20,60 @@ lib64/
 parts/
 sdist/
 var/
+wheels/
 *.egg-info/
 .installed.cfg
 *.egg
 
-# Virtual Environment
-venv/
+# 仮想環境
 .env
-.venv/
+.venv
+env/
+venv/
 ENV/
+env.bak/
+venv.bak/
 
-# IDE
-.idea/
+# IDE関連
 .vscode/
+.idea/
 *.swp
 *.swo
+*~
 
-# Fly.io
-fly.toml
-
-# その他
+# OS関連
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ログファイル
 *.log
-*.sqlite3 
+logs/
+
+# テスト関連
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# Fly.io関連
+fly.toml.bak
+
+# 開発用ファイル
+docker-compose.yml
+docker-compose.override.yml 

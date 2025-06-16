@@ -11,18 +11,19 @@ class Settings(BaseSettings):
     DEBUG: bool = True
 
     # Discord設定
-    DISCORD_TOKEN: str | None = None
+    DISCORD_TOKEN: str
     DISCORD_CLIENT_ID: str | None = None
     DISCORD_CLIENT_SECRET: str | None = None
-    DISCORD_DEVELOPMENT_GUILD_ID: int | None = None
+    DISCORD_DEVELOPMENT_GUILD_ID: str | None = None
 
     # データベース設定
     DATABASE_URL: str
 
     # Microsoft Graph API設定
-    MICROSOFT_CLIENT_ID: str | None = None
-    MICROSOFT_CLIENT_SECRET: str | None = None
-    MICROSOFT_TENANT_ID: str | None = None
+    MICROSOFT_CLIENT_ID: str = "00013887-1d74-406e-896c-00eb0647fb9a"  # RITS_TASK_BOT
+    MICROSOFT_CLIENT_SECRET: str  # アプリケーションのシークレット
+    # 個人用Microsoftアカウント対応のため"common"テナントを使用
+    MICROSOFT_TENANT_ID: str = "common"  # 個人・組織アカウント両対応
 
     # FastAPI設定
     API_HOST: str = "0.0.0.0"
