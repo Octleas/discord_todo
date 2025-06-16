@@ -28,14 +28,16 @@ async def mail_callback(
     if not code or not guild_id or not user_id:
         raise HTTPException(status_code=400, detail="code, guild_id, user_idは必須です")
 
-    token_url = f"https://login.microsoftonline.com/{settings.MICROSOFT_TENANT_ID}/oauth2/v2.0/token"
+    # 個人用Microsoftアカウント対応のため"common"エンドポイントを使用
+    token_url = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
     data = {
         "client_id": settings.MICROSOFT_CLIENT_ID,
         "client_secret": settings.MICROSOFT_CLIENT_SECRET,
         "grant_type": "authorization_code",
         "code": code,
         "redirect_uri": "http://localhost:8000/api/mail/callback",
-        "scope": "offline_access Mail.Read User.Read",
+        # スコープを完全URL形式に変更
+        "scope": "https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/User.Read offline_access openid profile",
     }
     async with httpx.AsyncClient() as client:
         response = await client.post(token_url, data=data)
@@ -119,14 +121,14 @@ async def ensure_valid_access_token(connection, db):
     # 期限が5分未満ならリフレッシュ
     if connection.token_expires_at - datetime.utcnow() < timedelta(minutes=5):
         print("[DEBUG] トークン有効期限が近い/切れているためリフレッシュ処理を実行")
-        token_url = f"https://login.microsoftonline.com/{settings.MICROSOFT_TENANT_ID}/oauth2/v2.0/token"
+        token_url = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
         data = {
             "client_id": settings.MICROSOFT_CLIENT_ID,
             "client_secret": settings.MICROSOFT_CLIENT_SECRET,
             "grant_type": "refresh_token",
             "refresh_token": connection.refresh_token,
             "redirect_uri": "http://localhost:8000/api/mail/callback",
-            "scope": "offline_access Mail.Read User.Read",
+            "scope": "https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/User.Read offline_access openid profile",
         }
         async with httpx.AsyncClient() as client:
             response = await client.post(token_url, data=data)

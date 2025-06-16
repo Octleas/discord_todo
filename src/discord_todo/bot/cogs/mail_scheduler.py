@@ -32,18 +32,18 @@ class MailSchedulerCog(commands.Cog):
         )
         self.scheduler.start()
 
-    @app_commands.command(name="mail-test", description="メール取得のテストを実行します")
+    @app_commands.command(name="mail-notify", description="メール通知のテストを実行します")
     @app_commands.describe(
-        limit="取得するメールの数（1-50）",
+        limit="取得するメールの数（1-20）",
         skip_notification="通知を送信せずに取得のみ行う場合はTrue"
     )
-    async def test_mail_fetch(
+    async def test_mail_notify(
         self,
         interaction: discord.Interaction,
-        limit: app_commands.Range[int, 1, 50] = 10,
+        limit: app_commands.Range[int, 1, 20] = 5,
         skip_notification: bool = False
     ) -> None:
-        """メール取得のテストを実行するコマンド"""
+        """メール通知のテストを実行するコマンド"""
         await interaction.response.defer(ephemeral=True)
         
         try:
@@ -64,7 +64,9 @@ class MailSchedulerCog(commands.Cog):
                     )
                     return
 
-                # メール取得テスト
+                print(f"[DEBUG] メール通知テスト開始 - ユーザー: {connection.email}")
+
+                # メール取得・通知テスト
                 try:
                     mails = await self.fetch_user_mails(
                         connection,
@@ -74,48 +76,57 @@ class MailSchedulerCog(commands.Cog):
                     )
                     
                     # 取得結果のサマリーを送信
-                    summary = f"メール取得テストが完了しました。\n"
-                    summary += f"- 取得したメール数: {len(mails)}\n"
-                    if not skip_notification:
-                        summary += "- 通知チャンネルを確認してください。"
-                    else:
+                    summary = f"📧 メール通知テストが完了しました。\n"
+                    summary += f"**取得したメール数:** {len(mails)}件\n"
+                    
+                    if not skip_notification and mails:
+                        summary += "**結果:** チャンネルに通知を送信しました。"
+                    elif skip_notification and mails:
                         # 通知をスキップした場合は、件名一覧を表示
-                        summary += "\n取得したメール：\n"
-                        for mail in mails[:5]:  # 最初の5件のみ表示
-                            subject = mail["subject"]
-                            sender = mail["from"]["emailAddress"]["address"]
-                            summary += f"- {subject} (From: {sender})\n"
-                        if len(mails) > 5:
-                            summary += f"...他 {len(mails) - 5} 件"
+                        summary += "\n**取得したメール:**\n"
+                        for i, mail in enumerate(mails[:3], 1):  # 最初の3件のみ表示
+                            subject = mail.get("subject", "件名なし")[:50]
+                            sender = mail.get("from", {}).get("emailAddress", {}).get("address", "不明")
+                            summary += f"`{i}.` {subject}\n    📧 From: {sender}\n"
+                        if len(mails) > 3:
+                            summary += f"...他 {len(mails) - 3} 件"
+                    else:
+                        summary += "**結果:** 新着メールはありませんでした。"
                     
                     await interaction.followup.send(summary, ephemeral=True)
+                    
                 except Exception as e:
+                    print(f"[ERROR] メール通知テストでエラー: {e}")
                     await interaction.followup.send(
-                        f"メール取得テストでエラーが発生しました：{str(e)}",
+                        f"❌ メール通知テストでエラーが発生しました:\n```{str(e)}```",
                         ephemeral=True
                     )
         except Exception as e:
+            print(f"[ERROR] 全体エラー: {e}")
             await interaction.followup.send(
-                f"エラーが発生しました：{str(e)}",
+                f"❌ エラーが発生しました:\n```{str(e)}```",
                 ephemeral=True
             )
 
     async def fetch_all_mails(self):
-        """全ユーザーのメールを取得"""
+        """全ユーザーのメールを取得（定期実行用）"""
+        print("[DEBUG] 定期メール取得を開始")
         try:
             async with AsyncSessionLocal() as session:
                 # 有効な連携を全て取得
-                current_time = to_utc(datetime.now())
+                current_time = datetime.now(timezone.utc).replace(tzinfo=None)
                 result = await session.execute(
                     select(MailConnection).where(
                         MailConnection.token_expires_at > current_time
                     )
                 )
                 connections = result.scalars().all()
+                print(f"[DEBUG] 有効な連携数: {len(connections)}")
 
                 for connection in connections:
                     try:
-                        await self.fetch_user_mails(connection, session)
+                        print(f"[DEBUG] メール取得開始: {connection.email}")
+                        await self.fetch_user_mails(connection, session, limit=5)
                     except Exception as e:
                         print(f"[ERROR] ユーザー {connection.user_id} のメール取得に失敗: {e}")
                         continue
@@ -127,7 +138,7 @@ class MailSchedulerCog(commands.Cog):
         self,
         connection: MailConnection,
         session,
-        limit: int = 10,
+        limit: int = 5,
         skip_notification: bool = False
     ):
         """個別ユーザーのメール取得処理"""
@@ -141,35 +152,34 @@ class MailSchedulerCog(commands.Cog):
             url = "https://graph.microsoft.com/v1.0/me/messages"
             headers = {"Authorization": f"Bearer {access_token}"}
             params = {
-                "$top": min(50, limit),  # 最大50件まで
+                "$top": min(20, limit),  # 最大20件まで
                 "$orderby": "receivedDateTime desc",
                 "$select": "subject,from,receivedDateTime,id"
             }
 
-            print(f"[DEBUG] メール取得APIを呼び出し: {url}")
             async with httpx.AsyncClient() as client:
                 response = await client.get(url, headers=headers, params=params)
-                print(f"[DEBUG] API応答ステータス: {response.status_code}")
                 
                 if response.status_code != 200:
-                    print(f"[ERROR] メール取得APIでエラー: {response.text}")
+                    print(f"[ERROR] メール取得APIでエラー: {response.status_code} - {response.text}")
                     return []
 
                 mails = response.json().get("value", [])
                 print(f"[DEBUG] 取得したメール数: {len(mails)}")
                 
-                if not skip_notification:
+                if not skip_notification and mails:
                     # 取得したメールをDiscordに通知
                     guild = self.bot.get_guild(int(connection.guild_id))
                     if not guild:
                         print(f"[ERROR] Guild not found: {connection.guild_id}")
                         return mails
 
-                    for mail in mails:
+                    # 最新の3件のみ通知
+                    for mail in mails[:3]:
                         await self.notify_mail(guild, connection, mail)
 
             # 最終チェック時刻を更新
-            connection.last_checked_at = to_utc(datetime.now())
+            connection.last_checked_at = datetime.now(timezone.utc).replace(tzinfo=None)
             await session.commit()
 
             return mails
@@ -188,23 +198,29 @@ class MailSchedulerCog(commands.Cog):
                 return
 
             # Embedの作成
+            subject = mail.get("subject", "件名なし")
             embed = discord.Embed(
-                title=mail["subject"],
+                title=f"📧 {subject}",
                 color=discord.Color.blue(),
                 timestamp=datetime.fromisoformat(mail["receivedDateTime"].replace("Z", "+00:00"))
             )
             
-            sender = mail["from"]["emailAddress"]
+            sender = mail.get("from", {}).get("emailAddress", {})
+            sender_name = sender.get("name", "不明")
+            sender_address = sender.get("address", "不明なアドレス")
+            
             embed.add_field(
                 name="送信者",
-                value=f"{sender.get('name', 'Unknown')} ({sender.get('address', 'No address')})",
+                value=f"{sender_name} ({sender_address})",
                 inline=False
             )
+            
+            embed.set_footer(text="新着メール通知")
 
-            print(f"[DEBUG] 通知を送信: {mail['subject']}")
+            print(f"[DEBUG] 通知を送信: {subject}")
             # 通知を送信
             await channel.send(
-                f"<@{connection.user_id}>さん宛のメールが届きました：",
+                f"<@{connection.user_id}>さん宛のメールが届きました",
                 embed=embed
             )
 
